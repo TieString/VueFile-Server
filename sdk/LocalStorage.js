@@ -83,7 +83,6 @@ class LocalStorage {
             const stat = await lstat(file);
             if (stat.isFile()) {
                 await res.download(file)
-                return
             } else {
                 throw new Error(`Cannot download a directory: ${path}`);
             }
