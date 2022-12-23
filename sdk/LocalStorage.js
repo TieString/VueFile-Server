@@ -1,17 +1,12 @@
 const os = require('os'),
     nodePath = require('path'),
+    path = require('path'),
     fs = require('fs'),
-    fsPromises = require('fs').promises,
-    readdir = fsPromises.readdir,
-    stat = fsPromises.stat,
-    rename = fsPromises.rename,
-    unlink = fsPromises.unlink,
-    lstat = fsPromises.lstat,
     util = require('util'),
     rimraf = util.promisify(require('rimraf')),
-    getFileMimeType = require('./file'),
     multiparty = require('multiparty'),
-    path = require('path')
+    mime = require('mime'),
+    { sleep, getFileMimeType } = require('./file')
 
 class LocalStorage {
     constructor(root) {
@@ -33,7 +28,7 @@ class LocalStorage {
             if (path[path.length - 1] !== '/') {
                 path += '/'
             }
-            let items = await readdir(this.root + path, { withFileTypes: true })
+            let items = await fs.promises.readdir(this.root + path, { withFileTypes: true })
 
             for (let item of items) {
                 let isFile = item.isFile(),
@@ -51,7 +46,7 @@ class LocalStorage {
                 result.basename = result.name = nodePath.basename(result.path)
 
                 if (isFile) {
-                    let fileStat = await stat(this.root + result.path)
+                    let fileStat = await fs.promises.stat(this.root + result.path)
                     result.size = fileStat.size
                     result.extension = nodePath.extname(result.path).slice(1)
                     result.name = nodePath.basename(result.path, '.' + result.extension)
@@ -71,7 +66,7 @@ class LocalStorage {
     async upload(path, files) {
         try {
             for (let file of files) {
-                await rename(file.path, this.root + path + file.originalname)
+                await fs.promises.rename(file.path, this.root + path + file.originalname)
             }
         } catch (err) {
             console.error(err)
@@ -82,7 +77,7 @@ class LocalStorage {
     async download(req, res) {
         try {
             const fullPath = this.root + req.query.path
-            const stat = await lstat(fullPath)
+            const stat = await fs.promises.lstat(fullPath)
             if (stat.isFile()) {
                 const range = req.headers.range
                 if (!range) {
@@ -118,17 +113,17 @@ class LocalStorage {
     }
 
     async mkdir(path) {
-        await fsPromises.mkdir(this.root + path, { recursive: true })
+        await fs.promises.mkdir(this.root + path, { recursive: true })
     }
 
     async delete(path) {
         try {
-            let stat = await lstat(this.root + path),
+            let stat = await fs.promises.lstat(this.root + path),
                 isDir = stat.isDirectory(),
                 isFile = stat.isFile()
 
             if (isFile) {
-                await unlink(this.root + path)
+                await fs.promises.unlink(this.root + path)
             } else if (isDir) {
                 await rimraf(this.root + path)
             }
@@ -137,43 +132,84 @@ class LocalStorage {
         }
     }
 
-    /* 断点续传 */
     /**
-     * 文件上传
+     * 文件上传 - 断点续传
      * @param {Object} req 客户端传入参数
      */
-    multipartyUploadFile = async (req) => {
+    multipartyUpload = async (req, res) => {
         try {
-            let { hash, name } = req.query
-            let form = new multiparty.Form({})
-            form.uploadDir = 'upload'
-            let { fields, files } = await new Promise((resolve, reject) => {
-                form.parse(req, (err, fields, files) => {
-                    if (err) return reject(err)
-                    return resolve({ fields, files })
-                })
-            })
-            let file = files.file[0]
+            let { hash, name, type } = req.query
             let dir = `${path.join(__dirname, '../')}upload/${hash}`
-            if (!fs.existsSync(dir)) {
-                try {
-                    fs.mkdirSync(dir)
-                } catch (err) {
-                    throw new Error(`Failed to create directory ${dir}: ${err}`)
+            // 文件是否已经上传过
+            let realPath = `${dir}.${mime.extension(type)}`
+            if (fs.existsSync(realPath)) {
+                res.status(200).json({ realPath, msg: '文件已存在，无需上传！' })
+                return
+            }
+
+            let chunkPath = `${dir}/${name}` // 切片路径 判断切片是否上传过
+            if (fs.existsSync(chunkPath)) {
+                res.status(200).json({ chunkPath, msg: '切片已存在，跳过此切片' })
+            } else {
+                // 继续上传
+                let { hash, name } = req.query
+                let form = new multiparty.Form({})
+                form.uploadDir = 'upload'
+                let { fields, files } = await new Promise((resolve, reject) => {
+                    form.parse(req, (err, fields, files) => {
+                        if (err) return reject(err)
+                        return resolve({ fields, files })
+                    })
+                })
+                let file = files.file[0]
+                let dir = `${path.join(__dirname, '../')}upload/${hash}`
+                if (!fs.existsSync(dir)) {
+                    try {
+                        fs.mkdirSync(dir)
+                    } catch (err) {
+                        throw new Error(`Failed to create directory ${dir}: ${err}`)
+                    }
                 }
+                let savePath = `${dir}/${name}`
+                try {
+                    fs.renameSync(file.path, savePath)
+                } catch (err) {
+                    throw new Error(`Failed to move file from ${file.path} to ${savePath}: ${err}`)
+                }
+                file.realPath = savePath
+                return { fields, files }
             }
-            let savePath = `${dir}/${name}`
-            try {
-                fs.renameSync(file.path, savePath)
-            } catch (err) {
-                throw new Error(`Failed to move file from ${file.path} to ${savePath}: ${err}`)
-            }
-            file.realPath = savePath
-            return { fields, files }
         } catch (err) {
             console.error(err)
             throw err
         }
+    }
+
+    multipartyFileMerge = async (req, res) => {
+        await sleep(1000) // 等待1s 防止合并处理早于文件传输进行 TODO: 通过文件切片总大小比对实现
+        let { hash, type, name } = req.query
+        let partsDir = `${path.join(__dirname, '../')}upload\\${hash}`
+        // 文件是否已经上传过
+        let fullPath = `${partsDir}.${mime.extension(type)}`
+        // try {
+        //     if (fs.existsSync(realPath)) {
+        //         res.status(200).json({ realPath, msg: '文件已存在，无需合并！' })
+        //         return
+        //     }
+        // } catch {
+        let fileList = fs.readdirSync(partsDir)
+        fileList.sort((a, b) => a - b)
+        fileList.forEach((item) => {
+            const itemDir = `${partsDir}/${item}`
+            fs.appendFileSync(fullPath, fs.readFileSync(itemDir))
+            fs.unlinkSync(itemDir)
+        })
+        fs.rmdirSync(partsDir)
+        await fs.promises.rename(fullPath, `files/${name}`)
+
+        res.status(200).json({ path: fullPath, msg: '合并成功！' })
+        // }
+        return
     }
 }
 
