@@ -66,7 +66,7 @@ module.exports = function (storages, options = {}) {
 
         // 合并文件
         router.get(`/${storage.code}/upload/merge`, async (req, res, next) => {
-            await sleep(1000)
+            await sleep(1000) // 等待1s 防止合并处理早于文件传输进行 TODO: 通过文件切片总大小比对实现
             let { hash, type } = req.query
             let dir = `${path.join(__dirname, '../')}upload/${hash}`
             // 文件是否已经上传过
@@ -77,8 +77,7 @@ module.exports = function (storages, options = {}) {
             //         return
             //     }
             // } catch {
-            let fileList = fs.readdirSync(dir)
-            fileList.sort((a, b) => a - b)
+            let fileList = fs.readdirSync(dir).sort((a, b) => a - b)
             fileList.forEach((item) => {
                 fs.appendFileSync(`${dir}.${mime.extension(type)}`, fs.readFileSync(`${dir}/${item}`))
                 fs.unlinkSync(`${dir}/${item}`)
