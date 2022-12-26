@@ -41,9 +41,15 @@ module.exports = function (storages, options = {}) {
         /* 断点续传 */
         router.post(`/${storage.code}/multipartyUpload`, (req, res, next) => {
             storage
-                .multipartyUpload(req,res)
+                .multipartyUpload(req, res)
                 .then((value) => {
-                    res.status(200).json(value)
+                    if (value.code == 0)
+                        res.status(200).json({ code: value.code, path: value.path, msg: '文件已存在，无需上传！' })
+                    else if (value.code == 1)
+                        res.status(200).json({ code: value.code, path: value.path, msg: '切片已存在，跳过此切片' })
+                    else res.status(200).json(value)
+
+                    return
                 })
                 .catch((reason) => {
                     res.status(500).json(reason)
@@ -51,7 +57,7 @@ module.exports = function (storages, options = {}) {
         })
 
         // 合并文件
-        router.get(`/${storage.code}/upload/merge`, async (req, res, next) => {
+        router.get(`/${storage.code}/merge`, async (req, res, next) => {
             storage
                 .multipartyFileMerge(req, res)
                 .then((value) => {

@@ -7,10 +7,10 @@ const os = require('os'),
     multiparty = require('multiparty'),
     mime = require('mime'),
     { sleep, getFileMimeType } = require('./file')
-
 class LocalStorage {
     constructor(root) {
         this.code = 'local'
+        this.receivedChunkCount = 0
         if (root) {
             this.root = root
         } else if (process.env.FILEBROWSER_LOCAL_ROOT_PATH) {
@@ -133,7 +133,7 @@ class LocalStorage {
     }
 
     /**
-     * 文件上传 - 断点续传
+     * 文件上传 - 分片上传
      * @param {Object} req 客户端传入参数
      */
     multipartyUpload = async (req, res) => {
@@ -143,18 +143,21 @@ class LocalStorage {
             // 文件是否已经上传过
             let realPath = `${dir}.${mime.extension(type)}`
             if (fs.existsSync(realPath)) {
-                res.status(200).json({ realPath, msg: '文件已存在，无需上传！' })
-                return
+                return new Promise(function (resolve, _reject) {
+                    resolve({ code: 0, msg: '文件已经存在，无需上传', path: realPath })
+                })
             }
 
             let chunkPath = `${dir}/${name}` // 切片路径 判断切片是否上传过
             if (fs.existsSync(chunkPath)) {
-                res.status(200).json({ chunkPath, msg: '切片已存在，跳过此切片' })
+                return new Promise(function (resolve, _reject) {
+                    resolve({ code: 1, msg: '切片已存在，跳过此切片', path: chunkPath })
+                })
             } else {
                 // 继续上传
                 let { hash, name } = req.query
                 let form = new multiparty.Form({})
-                form.uploadDir = 'upload'
+                form.uploadDir = process.env.FILEBROWSER_UPLOAD_PATH
                 let { fields, files } = await new Promise((resolve, reject) => {
                     form.parse(req, (err, fields, files) => {
                         if (err) return reject(err)
@@ -173,6 +176,7 @@ class LocalStorage {
                 let savePath = `${dir}/${name}`
                 try {
                     fs.renameSync(file.path, savePath)
+                    this.receivedChunkCount++
                 } catch (err) {
                     throw new Error(`Failed to move file from ${file.path} to ${savePath}: ${err}`)
                 }
@@ -185,9 +189,16 @@ class LocalStorage {
         }
     }
 
+    /**
+     * @description 文件上传分片文件合并
+     * @author TieString
+     * @date 2022/12/26
+     * @param {*} req 客户端传入参数
+     * @param {*} res response
+     * @memberof LocalStorage 存储
+     */
     multipartyFileMerge = async (req, res) => {
-        await sleep(1000) // 等待1s 防止合并处理早于文件传输进行 TODO: 通过文件切片总大小比对实现
-        let { hash, type, name } = req.query
+        let { hash, type, name, chunksCount } = req.query
         let partsDir = `${path.join(__dirname, '../')}upload\\${hash}`
         // 文件是否已经上传过
         let fullPath = `${partsDir}.${mime.extension(type)}`
@@ -197,6 +208,8 @@ class LocalStorage {
         //         return
         //     }
         // } catch {
+        while (this.receivedChunkCount !== parseInt(chunksCount)) await sleep(100)
+
         let fileList = fs.readdirSync(partsDir)
         fileList.sort((a, b) => a - b)
         fileList.forEach((item) => {
@@ -205,8 +218,8 @@ class LocalStorage {
             fs.unlinkSync(itemDir)
         })
         fs.rmdirSync(partsDir)
-        await fs.promises.rename(fullPath, `files/${name}`)
-
+        // await fs.promises.rename(fullPath, `files/${name}`)
+        this.receivedChunkCount = 0
         res.status(200).json({ path: fullPath, msg: '合并成功！' })
         // }
         return
