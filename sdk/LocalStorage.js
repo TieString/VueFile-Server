@@ -220,7 +220,9 @@ class LocalStorage {
         fs.rmdirSync(partsDir)
         // await fs.promises.rename(fullPath, `files/${name}`)
         this.receivedChunkCount = 0
-        res.status(200).json({ path: fullPath, msg: '合并成功！' })
+        return new Promise(function (resolve, _reject) {
+            resolve({ code: 200, msg: '合并成功！', path: fullPath })
+        })
         // }
         return
     }

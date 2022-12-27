@@ -1,5 +1,3 @@
-const { sleep } = require('./file')
-
 const router = require('express').Router(),
     multer = require('multer'),
     path = require('path'),
@@ -43,13 +41,13 @@ module.exports = function (storages, options = {}) {
             storage
                 .multipartyUpload(req, res)
                 .then((value) => {
-                    if (value.code == 0)
-                        res.status(200).json({ code: value.code, path: value.path, msg: '文件已存在，无需上传！' })
-                    else if (value.code == 1)
-                        res.status(200).json({ code: value.code, path: value.path, msg: '切片已存在，跳过此切片' })
-                    else res.status(200).json(value)
-
-                    return
+                    if (value.code == 0) {
+                        res.status(200).json({ code: value.code, path: value.path, msg: value.msg })
+                    } else if (value.code == 1) {
+                        res.status(200).json({ code: value.code, path: value.path, msg: value.msg })
+                    } else {
+                        res.status(200).json(value)
+                    }
                 })
                 .catch((reason) => {
                     res.status(500).json(reason)
@@ -61,7 +59,9 @@ module.exports = function (storages, options = {}) {
             storage
                 .multipartyFileMerge(req, res)
                 .then((value) => {
-                    res.status(200).json(value)
+                    if (value.code === 200) {
+                        res.status(200).json({ path: value.path, msg: value.msg })
+                    }
                 })
                 .catch((reason) => {
                     res.status(500).json(reason)
