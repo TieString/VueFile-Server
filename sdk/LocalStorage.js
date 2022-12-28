@@ -10,7 +10,7 @@ const os = require('os'),
 class LocalStorage {
     constructor(root) {
         this.code = 'local'
-        this.receivedChunkCount = 0
+        this.receivedChunkCount = {}
         if (root) {
             this.root = root
         } else if (process.env.FILEBROWSER_LOCAL_ROOT_PATH) {
@@ -139,6 +139,7 @@ class LocalStorage {
     multipartyUpload = async (req, res) => {
         try {
             let { hash, name, type } = req.query
+            if (typeof this.receivedChunkCount[hash] === 'undefined') this.receivedChunkCount[hash] = 0
             let dir = `${path.join(__dirname, '../')}upload/${hash}`
             // 文件是否已经上传过
             let realPath = `${dir}.${mime.extension(type)}`
@@ -176,7 +177,7 @@ class LocalStorage {
                 let savePath = `${dir}/${name}`
                 try {
                     fs.renameSync(file.path, savePath)
-                    this.receivedChunkCount++
+                    this.receivedChunkCount[hash]++
                 } catch (err) {
                     throw new Error(`Failed to move file from ${file.path} to ${savePath}: ${err}`)
                 }
@@ -208,7 +209,7 @@ class LocalStorage {
         //         return
         //     }
         // } catch {
-        while (this.receivedChunkCount !== parseInt(chunksCount)) await sleep(100)
+        while (this.receivedChunkCount[hash] !== parseInt(chunksCount)) await sleep(100)
 
         let fileList = fs.readdirSync(partsDir)
         fileList.sort((a, b) => a - b)
@@ -219,9 +220,9 @@ class LocalStorage {
         })
         fs.rmdirSync(partsDir)
         // await fs.promises.rename(fullPath, `files/${name}`)
-        this.receivedChunkCount = 0
+        this.receivedChunkCount[hash] = 0
         return new Promise(function (resolve, _reject) {
-            resolve({ code: 200, msg: '合并成功！', path: fullPath })
+            resolve({ code: 200, msg: '合并成功', path: req.query.path })
         })
         // }
         return
