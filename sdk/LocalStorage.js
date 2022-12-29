@@ -148,6 +148,7 @@ class LocalStorage {
                     resolve({ code: 0, msg: '文件已经存在，无需上传', path: realPath })
                 })
             }
+            this.receivedChunkCount[hash]++
 
             let chunkPath = `${dir}/${name}` // 切片路径 判断切片是否上传过
             if (fs.existsSync(chunkPath)) {
@@ -177,7 +178,6 @@ class LocalStorage {
                 let savePath = `${dir}/${name}`
                 try {
                     fs.renameSync(file.path, savePath)
-                    this.receivedChunkCount[hash]++
                 } catch (err) {
                     throw new Error(`Failed to move file from ${file.path} to ${savePath}: ${err}`)
                 }
@@ -220,7 +220,7 @@ class LocalStorage {
         })
         fs.rmdirSync(partsDir)
         // await fs.promises.rename(fullPath, `files/${name}`)
-        this.receivedChunkCount[hash] = 0
+        delete this.receivedChunkCount[hash]
         return new Promise(function (resolve, _reject) {
             resolve({ code: 200, msg: '合并成功', path: req.query.path })
         })
