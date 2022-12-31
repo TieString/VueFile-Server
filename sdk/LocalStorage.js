@@ -200,6 +200,7 @@ class LocalStorage {
      * @memberof LocalStorage 存储
      */
     multipartyFileMerge = async (req, res) => {
+        await sleep(1000)
         let { hash, type, name, chunksCount } = req.query
         let partsDir = `${path.join(__dirname, '../')}upload\\${hash}`
         // 文件是否已经上传过
@@ -210,7 +211,7 @@ class LocalStorage {
         //         return
         //     }
         // } catch {
-        while (this.receivedChunkCount[hash] !== parseInt(chunksCount)) await sleep(100)
+        // while (this.receivedChunkCount[hash] !== parseInt(chunksCount)) await sleep(100)
 
         let fileList = fs.readdirSync(partsDir)
         fileList.sort((a, b) => a - b)
@@ -221,7 +222,7 @@ class LocalStorage {
         })
         fs.rmdirSync(partsDir)
         // await fs.promises.rename(fullPath, `files/${name}`)
-        delete this.receivedChunkCount[hash]
+        // delete this.receivedChunkCount[hash]
         return new Promise(function (resolve, _reject) {
             resolve({ code: 200, msg: '合并成功', path: req.query.path })
         })
