@@ -85,25 +85,25 @@ class LocalStorage {
                     return
                 }
                 /* 开始断点续传 */
-                // 解析 HTTP Range 请求头，获取文件范围
-                const parts = range.replace(/bytes=/, '').split('-')
-                const start = parseInt(parts[0], 10)
-                const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
-                const chunksize = end - start + 1
+                // // 解析 HTTP Range 请求头，获取文件范围
+                // const parts = range.replace(/bytes=/, '').split('-')
+                // const start = parseInt(parts[0], 10)
+                // const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1
+                // const chunksize = end - start + 1
 
-                // 读取文件，并返回指定范围的内容
-                const file = fs.createReadStream(file, { start, end })
-                res.writeHead(206, {
-                    'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-                    'Accept-Ranges': 'bytes',
-                    'Content-Length': chunksize,
-                    'Content-Type': 'text/plain',
-                })
-                file.pipe(res)
+                // // 读取文件，并返回指定范围的内容
+                // const file = fs.createReadStream(file, { start, end })
+                // res.writeHead(206, {
+                //     'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                //     'Accept-Ranges': 'bytes',
+                //     'Content-Length': chunksize,
+                //     'Content-Type': 'text/plain',
+                // })
+                // file.pipe(res)
 
-                app.listen(3000, () => {
-                    console.log('Server is listening on port 3000')
-                })
+                // app.listen(3000, () => {
+                //     console.log('Server is listening on port 3000')
+                // })
             } else {
                 throw new Error(`Cannot download a directory: ${path}`)
             }
@@ -221,7 +221,7 @@ class LocalStorage {
             fs.unlinkSync(itemDir)
         })
         fs.rmdirSync(partsDir)
-        // await fs.promises.rename(fullPath, `files/${name}`)
+        await fs.promises.rename(fullPath, `files${req.query.path}${name}`)
         // delete this.receivedChunkCount[hash]
         return new Promise(function (resolve, _reject) {
             resolve({ code: 200, msg: '合并成功', path: req.query.path })
